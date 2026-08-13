@@ -63,9 +63,13 @@ impl PourSpec {
 }
 
 /// One unit of work for pour_set: what to pour and which bottle blob to fetch.
+/// `via` names the requested root that pulled this in as a dep (None for
+/// things the user asked for directly) — flushed rows show deps indented
+/// with that attribution, since completion-order output can't draw a tree.
 pub struct InstallItem {
     pub spec: PourSpec,
     pub file: BottleFile,
+    pub via: Option<String>,
 }
 
 /// The shared engine, wave-scheduled: bottles download in parallel (stacked
@@ -87,7 +91,10 @@ pub async fn pour_set(
     let n = items.len();
     let width = items
         .iter()
-        .map(|it| it.spec.name.chars().count() + 1 + it.spec.version.chars().count())
+        .map(|it| {
+            let indent = if it.via.is_some() { 2 } else { 0 };
+            indent + it.spec.name.chars().count() + 1 + it.spec.version.chars().count()
+        })
         .max()
         .unwrap_or(0);
 
@@ -141,7 +148,7 @@ pub async fn pour_set(
             // flushes later, when the formula is fully installed).
             let pb = mp_ref.insert_before(sticky_ref, ProgressBar::new(1));
             pb.set_style(ui::download_style());
-            pb.set_message(ui::row_label("", &it.spec.name, &it.spec.version, width));
+            pb.set_message(ui::item_label(&it.spec.name, &it.spec.version, width, it.via.is_some()));
             let bytes = bottle::download(&client, &it.file, &pb).await?;
             pb.finish_and_clear();
             mp_ref.remove(&pb);
@@ -231,7 +238,7 @@ pub async fn pour_set(
                 poured_count += 1;
                 pouring.retain(|&p| p != i);
                 let it = &items[i];
-                flush(ui::flushed_row(&it.spec.name, &it.spec.version, width, sizes[i]));
+                flush(ui::flushed_row(&it.spec.name, &it.spec.version, width, sizes[i], it.via.as_deref()));
                 if it.spec.keg_only && link_global {
                     flush(ui::dim(&format!("    · {} is keg-only, not linked", it.spec.name)));
                 }
@@ -293,12 +300,30 @@ pub async fn install_all(ctx: &Ctx, plan: &[&Formula], roots: &[String]) -> Resu
     let depmap: HashMap<String, String> =
         plan.iter().map(|f| (f.name.clone(), f.keg_version())).collect();
 
+    // Attribute each dep to the first requested root whose closure claims it.
+    let by_name: HashMap<&str, &Formula> = todo.iter().map(|f| (f.name.as_str(), *f)).collect();
+    let mut via: HashMap<String, String> = HashMap::new();
+    for root in roots {
+        let mut stack = vec![root.clone()];
+        while let Some(name) = stack.pop() {
+            if let Some(f) = by_name.get(name.as_str()) {
+                for dep in &f.dependencies {
+                    if !roots.contains(dep) && !via.contains_key(dep) && by_name.contains_key(dep.as_str()) {
+                        via.insert(dep.clone(), root.clone());
+                        stack.push(dep.clone());
+                    }
+                }
+            }
+        }
+    }
+
     let mut items = Vec::new();
     for f in &todo {
         let picked = bottle::pick(f)?;
         items.push(InstallItem {
             spec: PourSpec::from_formula(f, roots.contains(&f.name)),
             file: picked.file.clone(),
+            via: via.get(&f.name).cloned(),
         });
     }
 
@@ -450,6 +475,7 @@ pub async fn upgrade(ctx: &Ctx, index: &crate::api::Index, names: &[String]) -> 
         items.push(InstallItem {
             spec: PourSpec::from_formula(f, requested),
             file: bottle::pick(f)?.file.clone(),
+            via: None,
         });
     }
 

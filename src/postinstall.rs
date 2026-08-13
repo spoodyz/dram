@@ -67,6 +67,7 @@ impl StepCtx<'_> {
                     "etc" => prefix.join("etc"),
                     // bin, lib, libexec, share, pkgshare... are keg-relative
                     "pkgshare" => keg.join("share").join(self.name),
+                    "frameworks" => keg.join("Frameworks"),
                     other => keg.join(other),
                 };
                 match rel {
@@ -85,11 +86,16 @@ impl StepCtx<'_> {
             return true;
         };
         guards.iter().all(|g| {
-            let Some(p) = self.loc(g) else { return true };
-            let exists = brace_expand(&p.to_string_lossy()).iter().any(|c| Path::new(c).exists());
             match g.get("condition").and_then(|c| c.as_str()) {
-                Some("unless_exists") => !exists,
-                Some("if_exists") => exists,
+                // Platform gate: {"condition": "on", "value": "macos"|"linux"}
+                Some("on") => g.get("value").and_then(|v| v.as_str()) == Some("macos"),
+                Some(cond @ ("if_exists" | "unless_exists")) => {
+                    let Some(p) = self.loc(g) else { return true };
+                    let exists = brace_expand(&p.to_string_lossy())
+                        .iter()
+                        .any(|c| Path::new(c).exists());
+                    if cond == "if_exists" { exists } else { !exists }
+                }
                 _ => true,
             }
         })
@@ -237,13 +243,12 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
         }
         "set_permissions" => {
             let mode_str = step.get("permissions").and_then(|p| p.as_str()).unwrap_or("0755");
-            let mode = u32::from_str_radix(mode_str.trim_start_matches("0o"), 8)?;
             let recursive = !step.get("non_recursive").and_then(|n| n.as_bool()).unwrap_or(false);
             for p in paths(sc, step) {
-                set_mode(&p, mode)?;
+                apply_mode(&p, mode_str)?;
                 if recursive && p.is_dir() {
                     for entry in walkdir::WalkDir::new(&p).into_iter().filter_map(|e| e.ok()) {
-                        set_mode(entry.path(), mode)?;
+                        apply_mode(entry.path(), mode_str)?;
                     }
                 }
             }
@@ -470,11 +475,61 @@ fn into_dir(dst: &Path, src: &Path) -> PathBuf {
 }
 
 fn paths(sc: &StepCtx, step: &Value) -> Vec<PathBuf> {
-    if let Some(list) = step.get("paths").and_then(|p| p.as_array()) {
+    let raw: Vec<PathBuf> = if let Some(list) = step.get("paths").and_then(|p| p.as_array()) {
         list.iter().filter_map(|p| sc.loc(p)).collect()
     } else {
         step.get("path").and_then(|p| sc.loc(p)).into_iter().collect()
-    }
+    };
+    // Paths may carry glob patterns (python: venv/scripts/**/*).
+    raw.into_iter()
+        .flat_map(|p| {
+            let s = p.to_string_lossy().into_owned();
+            if s.contains('*') {
+                brace_expand(&s)
+                    .iter()
+                    .flat_map(|pat| glob::glob(pat).ok().into_iter().flatten().filter_map(|m| m.ok()))
+                    .collect()
+            } else {
+                vec![p]
+            }
+        })
+        .collect()
+}
+
+/// chmod semantics: octal ("0755") or symbolic ("u+w", "a+rx", "go-w").
+fn apply_mode(p: &Path, spec: &str) -> anyhow::Result<()> {
+    let current = fs::metadata(p)?.permissions().mode();
+    let mode = if let Ok(oct) = u32::from_str_radix(spec.trim_start_matches("0o"), 8) {
+        (current & !0o7777) | oct
+    } else {
+        let op_at = spec
+            .find(['+', '-'])
+            .ok_or_else(|| anyhow::anyhow!("unsupported permission spec '{spec}'"))?;
+        let (who, rest) = spec.split_at(op_at);
+        let subtract = rest.starts_with('-');
+        let mut bits = 0u32;
+        for c in rest[1..].chars() {
+            let per_class = match c {
+                'r' => 0o4,
+                'w' => 0o2,
+                'x' => 0o1,
+                _ => anyhow::bail!("unsupported permission char '{c}' in '{spec}'"),
+            };
+            let who = if who.is_empty() { "a" } else { who };
+            for w in who.chars() {
+                bits |= match w {
+                    'u' => per_class << 6,
+                    'g' => per_class << 3,
+                    'o' => per_class,
+                    'a' => per_class << 6 | per_class << 3 | per_class,
+                    _ => anyhow::bail!("unsupported permission class '{w}' in '{spec}'"),
+                };
+            }
+        }
+        if subtract { current & !bits } else { current | bits }
+    };
+    set_mode(p, mode)?;
+    Ok(())
 }
 
 fn source_target(sc: &StepCtx, step: &Value) -> anyhow::Result<(PathBuf, PathBuf)> {
@@ -528,6 +583,22 @@ mod tests {
             brace_expand("/{a,b}/{c,d}"),
             vec!["/a/c", "/a/d", "/b/c", "/b/d"]
         );
+    }
+
+    #[test]
+    fn symbolic_and_octal_modes() {
+        let p = std::env::temp_dir().join("dram-test-mode");
+        fs::write(&p, "x").unwrap();
+        apply_mode(&p, "0644").unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o644);
+        apply_mode(&p, "u+x").unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o744);
+        apply_mode(&p, "a+x").unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o755);
+        apply_mode(&p, "go-rx").unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o700);
+        assert!(apply_mode(&p, "banana").is_err());
+        let _ = fs::remove_file(&p);
     }
 
     #[test]

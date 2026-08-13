@@ -13,6 +13,7 @@ futures = "0.3"
 glob = "0.3"
 hex = "0.4"
 indicatif = "0.17"
+libc = "0.2"
 regex = "1"
 reqwest = { version = "0.12", features = ["json", "gzip", "stream"] }
 serde = { version = "1", features = ["derive"] }

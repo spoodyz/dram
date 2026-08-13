@@ -197,6 +197,7 @@ pub async fn sync(ctx: &Ctx) -> Result<PathBuf> {
                 url: locked.url.clone(),
                 sha256: locked.sha256.clone(),
             },
+            via: None,
         });
     }
 

@@ -48,13 +48,25 @@ pub fn sticky_style() -> ProgressStyle {
         .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", " "])
 }
 
-/// Permanent line flushed into scrollback when a formula is fully installed:
-///   jq 1.8.1          1.2 MiB ✓
-pub fn flushed_row(name: &str, version: &str, width: usize, size: u64) -> String {
+/// Label for an item row; deps are indented two columns inside the same
+/// field width so the size/status columns stay aligned:
+///   ripgrep 15.2.0     2.02 MiB ✓
+///     libgit2 1.9.6    1.86 MiB ✓ (bat)
+pub fn item_label(name: &str, version: &str, width: usize, dep: bool) -> String {
+    if dep {
+        format!("  {}", row_label("", name, version, width.saturating_sub(2)))
+    } else {
+        row_label("", name, version, width)
+    }
+}
+
+/// Permanent line flushed into scrollback when a formula is fully installed.
+pub fn flushed_row(name: &str, version: &str, width: usize, size: u64, via: Option<&str>) -> String {
     format!(
-        "  {} {:>10} {}",
-        row_label("", name, version, width),
+        "  {} {:>10} {}{}",
+        item_label(name, version, width, via.is_some()),
         indicatif::HumanBytes(size).to_string(),
-        CHECK
+        CHECK,
+        via.map(|v| dim(&format!(" ({v})"))).unwrap_or_default()
     )
 }

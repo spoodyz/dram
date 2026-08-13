@@ -302,6 +302,7 @@ dependencies = [
  "glob",
  "hex",
  "indicatif",
+ "libc",
  "regex",
  "reqwest",
  "serde",

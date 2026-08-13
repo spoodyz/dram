@@ -28,14 +28,18 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Install one or more formulae (and their runtime dependencies)
+    #[command(visible_aliases = ["add", "i"])]
     Install { names: Vec<String> },
     /// Show metadata for a formula
+    #[command(visible_alias = "show")]
     Info { name: String },
     /// Print the resolved dependency order for a formula
     Deps { name: String },
     /// List installed kegs
+    #[command(visible_alias = "ls")]
     List,
     /// Remove installed kegs, their links, and no-longer-needed deps
+    #[command(visible_aliases = ["remove", "rm"])]
     Uninstall {
         names: Vec<String>,
         /// Remove even if other installed kegs depend on it (may break them)
@@ -63,10 +67,12 @@ enum Command {
         dump: bool,
     },
     /// Search formulae by name or description
+    #[command(visible_alias = "find")]
     Search { term: String },
     /// List installed formulae with a newer version in the index
     Outdated,
     /// Upgrade named formulae, or everything outdated
+    #[command(visible_alias = "up")]
     Upgrade { names: Vec<String> },
     /// Check Cellar health: dangling links, dylib resolution, signatures
     Doctor,
@@ -94,6 +100,10 @@ impl Ctx {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Die quietly on closed pipes (`dram ls | head`) like every Unix tool,
+    // instead of Rust's default panic-on-EPIPE.
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+
     let cli = Cli::parse();
     let prefix = match cli.prefix {
         Some(p) => p,
