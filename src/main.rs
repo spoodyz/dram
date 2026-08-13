@@ -45,6 +45,13 @@ enum Command {
         /// Remove even if other installed kegs depend on it (may break them)
         #[arg(long = "force-remove", short = 'f')]
         force: bool,
+        /// Also remove the targets' deps, even explicitly-installed ones —
+        /// but never ones other kegs need or a project env has locked
+        #[arg(long = "remove-deps", short = 'd')]
+        remove_deps: bool,
+        /// Like --remove-deps, but removes deps other kegs need too (may break them)
+        #[arg(long = "force-remove-deps")]
+        force_remove_deps: bool,
     },
     /// Re-download the formula index
     Update,
@@ -170,11 +177,11 @@ async fn main() -> Result<()> {
                 println!("{name} {}", versions.join(" "));
             }
         }
-        Command::Uninstall { names, force } => {
+        Command::Uninstall { names, force, remove_deps, force_remove_deps } => {
             if names.is_empty() {
                 bail!("nothing to uninstall");
             }
-            install::uninstall(&ctx, &names, force)?;
+            install::uninstall(&ctx, &names, force, remove_deps, force_remove_deps)?;
         }
         Command::Init { names } => {
             env::init(&names)?;

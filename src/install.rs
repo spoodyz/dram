@@ -605,7 +605,17 @@ fn scan_installed(ctx: &Ctx) -> Result<Vec<Installed>> {
 
 /// Uninstall `names`, refusing if anything still installed depends on them
 /// (unless `force`), then sweep away deps no longer needed by anything.
-pub fn uninstall(ctx: &Ctx, names: &[String], force: bool) -> Result<()> {
+/// `remove_deps` extends the sweep to the targets' dep closure even when
+/// those deps were explicitly installed — but never past a dep another keg
+/// needs (unless `force_deps`) and never past a project-env-locked keg.
+pub fn uninstall(
+    ctx: &Ctx,
+    names: &[String],
+    force: bool,
+    remove_deps: bool,
+    force_deps: bool,
+) -> Result<()> {
+    let remove_deps = remove_deps || force_deps;
     let installed = scan_installed(ctx)?;
     let going: HashSet<&str> = names.iter().map(|s| s.as_str()).collect();
 
@@ -639,12 +649,98 @@ pub fn uninstall(ctx: &Ctx, names: &[String], force: bool) -> Result<()> {
         }
     }
 
+    let mut removing: HashSet<String> = names.iter().cloned().collect();
+
+    // --remove-deps: pull the targets' recorded dep closure into the removal
+    // set, explicit installs included. Kegs another keg needs stay (unless
+    // force_deps, with a warning); project-env-locked kegs always stay.
+    if remove_deps {
+        let by_name: HashMap<&str, &Installed> =
+            installed.iter().map(|i| (i.name.as_str(), i)).collect();
+        let mut closure: HashSet<String> = HashSet::new();
+        let mut stack: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        while let Some(n) = stack.pop() {
+            if let Some(r) = by_name.get(n).and_then(|i| i.receipt.as_ref()) {
+                for d in &r.deps {
+                    if by_name.contains_key(d.as_str()) && closure.insert(d.clone()) {
+                        stack.push(d);
+                    }
+                }
+            }
+        }
+        // Project-env-locked kegs are never candidates; say so once each.
+        closure.retain(|name| {
+            let protected = by_name[name.as_str()].receipt.as_ref().is_some_and(|r| r.protected);
+            if protected {
+                println!(
+                    "{}",
+                    ui::dim(&format!("  · kept {name} (locked by a project environment)"))
+                );
+            }
+            !protected
+        });
+
+        loop {
+            let mut grew = false;
+            for name in &closure {
+                if removing.contains(name) {
+                    continue;
+                }
+                let dependents: Vec<&str> = installed
+                    .iter()
+                    .filter(|o| !removing.contains(&o.name) && &o.name != name)
+                    .filter(|o| {
+                        o.receipt
+                            .as_ref()
+                            .is_some_and(|r| r.deps.iter().any(|d| d == name))
+                    })
+                    .map(|o| o.name.as_str())
+                    .collect();
+                if dependents.is_empty() {
+                    removing.insert(name.clone());
+                    grew = true;
+                } else if force_deps {
+                    eprintln!(
+                        "\x1b[33m!\x1b[0m removing {name} even though {} depend{} on it — they may break",
+                        dependents.join(", "),
+                        if dependents.len() == 1 { "s" } else { "" }
+                    );
+                    removing.insert(name.clone());
+                    grew = true;
+                }
+            }
+            if !grew {
+                break;
+            }
+        }
+        // Transparency: closure members that stayed because something needs them.
+        for name in &closure {
+            if !removing.contains(name) {
+                let needed_by: Vec<&str> = installed
+                    .iter()
+                    .filter(|o| !removing.contains(&o.name))
+                    .filter(|o| {
+                        o.receipt
+                            .as_ref()
+                            .is_some_and(|r| r.deps.iter().any(|d| d == name))
+                    })
+                    .map(|o| o.name.as_str())
+                    .collect();
+                if !needed_by.is_empty() {
+                    println!(
+                        "{}",
+                        ui::dim(&format!("  · kept {name} (needed by {})", needed_by.join(", ")))
+                    );
+                }
+            }
+        }
+    }
+
     // Simulate the autoremove fixpoint up front so the whole removal set can
     // be displayed as one tree before anything is touched. A dep (never an
     // explicit install) is swept once nothing outside the removal set needs
     // it; loop because removing one can orphan another (libidn2 falls, then
     // libunistring).
-    let mut removing: HashSet<String> = names.iter().cloned().collect();
     loop {
         let orphan = installed.iter().find(|i| {
             !removing.contains(&i.name)
