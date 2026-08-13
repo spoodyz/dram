@@ -1,5 +1,7 @@
 # dram
 
+![fastfetch counting dram packages alongside brew](assets/fastfetch-dram.webp)
+
 A wee pour of Homebrew. Bottle-only package installs for macOS with no Ruby,
 no git clone, no taps — just the two public endpoints that matter:
 
