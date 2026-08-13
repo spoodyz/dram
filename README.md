@@ -48,7 +48,9 @@ cp target/release/dram ~/.dram/bin/
 ## Benchmarks
 
 Same machine, same network, cold caches, brew with `HOMEBREW_NO_AUTO_UPDATE=1`
-(its best case — default config auto-updates and is far slower):
+— its best case. (Default config periodically auto-updates, adding ~1s to the
+first command whenever its API data is stale: measured 1.46s vs 0.53s on the
+same no-op.)
 
 | Operation | brew | dram | Speedup |
 |---|---|---|---|
