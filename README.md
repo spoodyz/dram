@@ -3,28 +3,27 @@
 [![CI](https://github.com/spoodyz/dram/actions/workflows/ci.yml/badge.svg)](https://github.com/spoodyz/dram/actions/workflows/ci.yml)
 [![License: BSD-2-Clause](https://img.shields.io/badge/license-BSD--2--Clause-blue.svg)](LICENSE)
 
-**A wee pour of Homebrew.** A fast, Homebrew-compatible package manager for
-macOS, written in Rust. Installs the same bottles from the same registry —
-with no Ruby, no taps, no git clone, and per-project locked environments
-that brew architecturally can't do.
+A wee pour of Homebrew. dram is a Homebrew-compatible package manager for
+macOS, written in Rust. It installs the same bottles from the same registry
+brew uses, without Ruby or taps, and it adds per-project locked environments,
+which brew can't do.
 
 ![dram installing imagemagick](assets/demo.gif)
 
-- **Fast where it counts** — parallel downloads and wave-scheduled parallel
-  installs (~2× brew on cold installs), and ~0.07s for no-op/metadata
-  operations where brew takes half a second or more (8×).
-- **The whole homebrew-core catalog** — same formulae, same bottles, same
-  versions, fetched from the same public API and registry brew uses.
-- **Per-project environments** — `dram.toml` + `dram.lock` pin exact versions
-  *and bottle digests*; `dram sync` reproduces the identical environment on
-  another machine even after the formula index moves on. Ten projects locking
-  jq share one keg.
-- **Actually functional** — dependency-safe uninstall with autoremove,
-  post-install steps interpreted natively, `upgrade`/`outdated`, `search`,
-  Dramfile bundles, and a Cellar-wide `doctor`.
-- **Honest scope** — bottles only. No casks (GUI apps), no source builds, no
-  services. Brew still does those; dram does the daily 90% dramatically
-  faster. Currently tested on Apple silicon.
+- About 2x faster than brew on cold installs, and 0.07s on a no-op install
+  where brew needs half a second. Downloads run 6-way parallel and each keg
+  installs the moment its deps land.
+- Same catalog as homebrew-core: same formulae, bottles, and versions, from
+  the same public API.
+- `dram.toml` and `dram.lock` pin exact versions and bottle digests per
+  project, so `dram sync` rebuilds the identical environment on another
+  machine even after the index has moved on. Ten projects locking jq share
+  one keg.
+- Uninstall checks dependents before removing anything and sweeps orphaned
+  deps afterward. Post-install steps run natively. There's also `upgrade`,
+  `outdated`, `search`, `doctor`, and Dramfile bundles.
+- Bottles only: no casks, no source builds, no services. Brew still does
+  those. Tested on Apple silicon so far.
 
 ## Install
 
@@ -32,7 +31,7 @@ Grab the prebuilt binary (Apple silicon):
 
 ```sh
 curl -L https://github.com/spoodyz/dram/releases/latest/download/dram-macos-arm64.tar.gz | tar xz
-./dram install jq   # dram adds itself-managed ~/.dram/bin to your PATH on first install
+./dram install jq   # the first install adds ~/.dram/bin to your PATH
 mv dram ~/.dram/bin/
 ```
 
@@ -47,29 +46,29 @@ cp target/release/dram ~/.dram/bin/
 
 ## Benchmarks
 
-Same machine, same network, cold caches, brew with `HOMEBREW_NO_AUTO_UPDATE=1`
-— its best case. (Default config periodically auto-updates, adding ~1s to the
-first command whenever its API data is stale: measured 1.46s vs 0.53s on the
-same no-op.)
+Same machine, same network, cold caches, brew with `HOMEBREW_NO_AUTO_UPDATE=1`,
+which is its best case. (Default config periodically auto-updates, adding ~1s
+to the first command whenever its API data is stale: measured 1.46s vs 0.53s
+on the same no-op.)
 
 | Operation | brew | dram | Speedup |
 |---|---|---|---|
-| Cold install: wget tree (5–6 formulae) | 6.2s | 3.7s | 1.7× |
-| Cold install: ffmpeg tree (13 formulae) | 6.4s | 3.3s | 1.9× |
-| No-op install (already installed) | 0.57s | 0.07s | 8× |
-| Uninstall ffmpeg tree + autoremove | 1.5s | 0.3s | 4.6× |
+| Cold install: wget tree (5-6 formulae) | 6.2s | 3.7s | 1.7x |
+| Cold install: ffmpeg tree (13 formulae) | 6.4s | 3.3s | 1.9x |
+| No-op install (already installed) | 0.57s | 0.07s | 8x |
+| Uninstall ffmpeg tree + autoremove | 1.5s | 0.3s | 4.6x |
 
-dram's installs do the full functional work: dependency resolution, keg-only
-handling, Mach-O relocation + re-signing, post-install steps, receipts.
+These installs do the full functional work: dependency resolution, keg-only
+handling, Mach-O relocation and re-signing, post-install steps, receipts.
 
 ## How it works
 
-Two public endpoints are everything:
+Everything comes from two public endpoints:
 
-- `https://formulae.brew.sh/api/formula.json` — every formula's metadata,
+- `https://formulae.brew.sh/api/formula.json`: every formula's metadata,
   deps, versions, and bottle URLs in one JSON dump (cached 24h locally).
-- `ghcr.io` — bottles are plain OCI blobs; anonymous pulls with the same
-  `Bearer QQ==` token brew itself uses.
+- `ghcr.io`: bottles are plain OCI blobs. Anonymous pulls use the same
+  `Bearer QQ==` token brew itself sends.
 
 ## How an install works
 
@@ -108,31 +107,31 @@ dram bundle --dump        # write your explicitly-installed set to a Dramfile
 ```
 
 After a successful install, dram checks whether `<prefix>/bin` is on your
-PATH and, if not, appends an export line to your shell profile
-(`~/.zshrc` for zsh, `~/.bash_profile` for bash) — idempotently, marked
-`# added by dram`. Open a new shell to pick it up.
+PATH. If it isn't, it appends an export line to your shell profile
+(`~/.zshrc` for zsh, `~/.bash_profile` for bash). The line is marked
+`# added by dram` and only written once. Open a new shell to pick it up.
 
 ## Known v1 limits (deliberate)
 
-- **Relocation is placeholder-only.** Bottles whose `cellar` field is an
+- Relocation is placeholder-based. Bottles whose `cellar` field is an
   absolute path have the build prefix baked in beyond load commands
   (compiled-in resource paths etc.); those may misbehave outside
   `/opt/homebrew`. `dram info` shows the cellar field so you can tell.
-- **Platform tag choice is a static preference list**, not real OS-version
+- The platform tag comes from a static preference list, not real OS-version
   compatibility logic.
-- **Only `bin` is linked.** No lib/include/share linking; build-time
+- Only `bin` is linked. There's no lib/include/share linking; build-time
   consumers should use `~/.dram/opt/<name>/...` paths.
-- **Shells out to Xcode's otool / install_name_tool / codesign.** Replace
-  with `goblin` + in-process signing later if the fork-per-binary cost shows.
-- **No casks.** GUI apps are a different project.
+- dram shells out to Xcode's otool, install_name_tool, and codesign. A
+  Mach-O crate could replace that if the fork-per-binary cost ever shows.
+- No casks. GUI apps are a different project.
 
 ## Per-project environments
 
-The thing brew architecturally can't do. Kegs are relocated with
-**version-pinned dylib paths** (`Cellar/<dep>/<version>/lib/...`, not the
-mutable `opt/` link), which makes them immutable artifacts — any number of
-versions coexist in the shared Cellar, and installing or upgrading one
-thing can never break another. An environment is just symlinks on top:
+This is the part brew can't do at all. Kegs are relocated with version-pinned
+dylib paths (`Cellar/<dep>/<version>/lib/...` instead of the mutable `opt/`
+link), which makes them immutable artifacts: any number of versions coexist
+in the shared Cellar, and installing or upgrading one thing can never break
+another. An environment is just symlinks on top:
 
 ```
 dram init jq zstd     # write dram.toml
@@ -142,35 +141,36 @@ dram shell            # subshell with the env on PATH (DRAM_ENV set)
 eval "$(dram env)"    # or wire it into direnv
 ```
 
-The lockfile records every platform tag's bottle digest, and sync fetches
-by locked URL + sha256 — so a lockfile committed today reproduces the same
+The lockfile records every platform tag's bottle digest, and sync fetches by
+locked URL + sha256, so a lockfile committed today reproduces the same
 environment on another machine even after the formula index moves on.
 Commit `dram.toml` + `dram.lock`; gitignore `.dram/`.
 
 ## Post-install
 
-Homebrew exposes `post_install_steps` as declarative JSON in the API, and
-dram interprets them natively (no Ruby): filesystem verbs (mkdir_p, symlink,
-copy, write, inreplace, ...), `run` with env/chdir, gzipped-executable
-installs, data-dir init, and the GUI cache helpers when their tools are
-present. Step problems surface as warnings, never failed installs. The only
-skips are the Linux/exotic ones (gcc/glibc/llvm runtime config, php,
-python ≤3.11 bootstrap — modern python@3.12+ works fully); those warn
-honestly. Steps are pinned into `dram.lock` so env syncs replay them.
+Homebrew publishes `post_install_steps` as declarative JSON in its API, and
+dram interprets them natively, without Ruby. That covers the filesystem verbs
+(mkdir_p, symlink, copy, write, inreplace), `run` with env and chdir,
+gzipped-executable installs, data-dir init, and the GUI cache helpers when
+their tools are present. A failing step becomes a warning, not a failed
+install. The steps dram skips are the Linux-only and exotic ones: gcc/glibc/
+llvm runtime config, php, and the bootstrap for python 3.11 and older.
+python@3.12+ works fully, and every skipped step prints a warning. Steps are
+also pinned into `dram.lock` so env syncs replay them.
 
 ## Under the hood
 
-Installs are wave-scheduled: bottles download 6-way parallel, and each keg
+Installs are wave-scheduled. Bottles download 6-way parallel, and each keg
 pours (extract -> relocate -> re-sign -> post-install) the moment its own
-download and its deps are done — independent DAG branches pour concurrently
-(4-way), overlapping the remaining downloads. Writes to the shared bin/opt
+download and its deps are done, so independent DAG branches pour concurrently
+(4-way) and overlap the remaining downloads. Writes to the shared bin/opt
 namespaces are serialized; everything keg-local runs parallel.
 
-Upgrades respect version pinning: a new version pours alongside the old,
-and the old keg is deleted only when no other keg could still pin it —
-dependents keep working until their own (revision-bumped) upgrade re-pours
-them. `cargo test` covers the resolver, relocation substitution, glob
-expansion, and Dramfile parsing.
+Upgrades respect version pinning: a new version pours alongside the old, and
+the old keg is deleted only when no other keg could still pin it. Dependents
+keep working until their own revision-bumped upgrade re-pours them.
+`cargo test` covers the resolver, relocation substitution, glob expansion,
+and Dramfile parsing.
 
 ## Seen in the wild
 
