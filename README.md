@@ -1,9 +1,68 @@
-# dram
+# dram 🥃
 
-![fastfetch counting dram packages alongside brew](assets/fastfetch-dram.webp)
+[![CI](https://github.com/spoodyz/dram/actions/workflows/ci.yml/badge.svg)](https://github.com/spoodyz/dram/actions/workflows/ci.yml)
+[![License: BSD-2-Clause](https://img.shields.io/badge/license-BSD--2--Clause-blue.svg)](LICENSE)
 
-A wee pour of Homebrew. Bottle-only package installs for macOS with no Ruby,
-no git clone, no taps — just the two public endpoints that matter:
+**A wee pour of Homebrew.** A fast, Homebrew-compatible package manager for
+macOS, written in Rust. Installs the same bottles from the same registry —
+with no Ruby, no taps, no git clone, and per-project locked environments
+that brew architecturally can't do.
+
+![dram installing imagemagick](assets/demo.gif)
+
+- **Fast where it counts** — parallel downloads and wave-scheduled parallel
+  installs (~2× brew on cold installs), and ~0.07s for no-op/metadata
+  operations where brew takes half a second or more (8×).
+- **The whole homebrew-core catalog** — same formulae, same bottles, same
+  versions, fetched from the same public API and registry brew uses.
+- **Per-project environments** — `dram.toml` + `dram.lock` pin exact versions
+  *and bottle digests*; `dram sync` reproduces the identical environment on
+  another machine even after the formula index moves on. Ten projects locking
+  jq share one keg.
+- **Actually functional** — dependency-safe uninstall with autoremove,
+  post-install steps interpreted natively, `upgrade`/`outdated`, `search`,
+  Dramfile bundles, and a Cellar-wide `doctor`.
+- **Honest scope** — bottles only. No casks (GUI apps), no source builds, no
+  services. Brew still does those; dram does the daily 90% dramatically
+  faster. Currently tested on Apple silicon.
+
+## Install
+
+Grab the prebuilt binary (Apple silicon):
+
+```sh
+curl -L https://github.com/spoodyz/dram/releases/latest/download/dram-macos-arm64.tar.gz | tar xz
+./dram install jq   # dram adds itself-managed ~/.dram/bin to your PATH on first install
+mv dram ~/.dram/bin/
+```
+
+Or build from source (needs Rust + Xcode CLT):
+
+```sh
+git clone https://github.com/spoodyz/dram && cd dram
+cargo build --release
+./target/release/dram install jq
+cp target/release/dram ~/.dram/bin/
+```
+
+## Benchmarks
+
+Same machine, same network, cold caches, brew with `HOMEBREW_NO_AUTO_UPDATE=1`
+(its best case — default config auto-updates and is far slower):
+
+| Operation | brew | dram | Speedup |
+|---|---|---|---|
+| Cold install: wget tree (5–6 formulae) | 6.2s | 3.7s | 1.7× |
+| Cold install: ffmpeg tree (13 formulae) | 6.4s | 3.3s | 1.9× |
+| No-op install (already installed) | 0.57s | 0.07s | 8× |
+| Uninstall ffmpeg tree + autoremove | 1.5s | 0.3s | 4.6× |
+
+dram's installs do the full functional work: dependency resolution, keg-only
+handling, Mach-O relocation + re-signing, post-install steps, receipts.
+
+## How it works
+
+Two public endpoints are everything:
 
 - `https://formulae.brew.sh/api/formula.json` — every formula's metadata,
   deps, versions, and bottle URLs in one JSON dump (cached 24h locally).
@@ -97,7 +156,7 @@ skips are the Linux/exotic ones (gcc/glibc/llvm runtime config, php,
 python ≤3.11 bootstrap — modern python@3.12+ works fully); those warn
 honestly. Steps are pinned into `dram.lock` so env syncs replay them.
 
-## Roadmap
+## Under the hood
 
 Installs are wave-scheduled: bottles download 6-way parallel, and each keg
 pours (extract -> relocate -> re-sign -> post-install) the moment its own
@@ -110,6 +169,12 @@ and the old keg is deleted only when no other keg could still pin it —
 dependents keep working until their own (revision-bumped) upgrade re-pours
 them. `cargo test` covers the resolver, relocation substitution, glob
 expansion, and Dramfile parsing.
+
+## Seen in the wild
+
+fastfetch support is [in review](https://github.com/fastfetch-cli/fastfetch/pull/2515):
+
+![fastfetch counting dram packages alongside brew](assets/fastfetch-dram.webp)
 
 ## Roadmap
 

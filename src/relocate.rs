@@ -196,11 +196,15 @@ fn relocate_text(
     depmap: &HashMap<String, String>,
 ) -> Result<()> {
     const MARKER: &[u8] = b"@@HOMEBREW";
-    let Ok(bytes) = fs::read(path) else { return Ok(()) };
+    let Ok(bytes) = fs::read(path) else {
+        return Ok(());
+    };
     if bytes.len() < MARKER.len() || !bytes.windows(MARKER.len()).any(|w| w == MARKER) {
         return Ok(());
     }
-    let Ok(content) = String::from_utf8(bytes) else { return Ok(()) };
+    let Ok(content) = String::from_utf8(bytes) else {
+        return Ok(());
+    };
     let replaced = substitute(&content, prefix, cellar, depmap);
     if replaced != content {
         let perms = fs::metadata(path)?.permissions();
@@ -251,7 +255,12 @@ mod tests {
     #[test]
     fn unknown_dep_falls_back_to_opt() {
         assert_eq!(
-            substitute("@@HOMEBREW_PREFIX@@/opt/zzz/lib/x.dylib", "/p", "/p/Cellar", &depmap()),
+            substitute(
+                "@@HOMEBREW_PREFIX@@/opt/zzz/lib/x.dylib",
+                "/p",
+                "/p/Cellar",
+                &depmap()
+            ),
             "/p/opt/zzz/lib/x.dylib"
         );
     }
@@ -259,15 +268,30 @@ mod tests {
     #[test]
     fn plain_prefix_and_cellar() {
         assert_eq!(
-            substitute("@@HOMEBREW_PREFIX@@/share/doc", "/p", "/p/Cellar", &depmap()),
+            substitute(
+                "@@HOMEBREW_PREFIX@@/share/doc",
+                "/p",
+                "/p/Cellar",
+                &depmap()
+            ),
             "/p/share/doc"
         );
         assert_eq!(
-            substitute("@@HOMEBREW_CELLAR@@/foo/1.0/lib", "/p", "/p/Cellar", &depmap()),
+            substitute(
+                "@@HOMEBREW_CELLAR@@/foo/1.0/lib",
+                "/p",
+                "/p/Cellar",
+                &depmap()
+            ),
             "/p/Cellar/foo/1.0/lib"
         );
         assert_eq!(
-            substitute("@@HOMEBREW_LIBRARY@@/Homebrew", "/p", "/p/Cellar", &depmap()),
+            substitute(
+                "@@HOMEBREW_LIBRARY@@/Homebrew",
+                "/p",
+                "/p/Cellar",
+                &depmap()
+            ),
             "/p/Library/Homebrew"
         );
     }

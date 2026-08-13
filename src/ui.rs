@@ -54,14 +54,23 @@ pub fn sticky_style() -> ProgressStyle {
 ///     libgit2 1.9.6    1.86 MiB ✓ (bat)
 pub fn item_label(name: &str, version: &str, width: usize, dep: bool) -> String {
     if dep {
-        format!("  {}", row_label("", name, version, width.saturating_sub(2)))
+        format!(
+            "  {}",
+            row_label("", name, version, width.saturating_sub(2))
+        )
     } else {
         row_label("", name, version, width)
     }
 }
 
 /// Permanent line flushed into scrollback when a formula is fully installed.
-pub fn flushed_row(name: &str, version: &str, width: usize, size: u64, via: Option<&str>) -> String {
+pub fn flushed_row(
+    name: &str,
+    version: &str,
+    width: usize,
+    size: u64,
+    via: Option<&str>,
+) -> String {
     format!(
         "  {} {:>10} {}{}",
         item_label(name, version, width, via.is_some()),

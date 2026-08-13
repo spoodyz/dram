@@ -49,10 +49,7 @@ pub fn doctor(ctx: &Ctx) -> Result<()> {
                 for entry in fs::read_dir(&dir)?.filter_map(|e| e.ok()) {
                     let p = entry.path();
                     // Only real files (not symlinks) that are Mach-O.
-                    if !p.is_file()
-                        || fs::read_link(&p).is_ok()
-                        || !relocate::is_macho_path(&p)
-                    {
+                    if !p.is_file() || fs::read_link(&p).is_ok() || !relocate::is_macho_path(&p) {
                         continue;
                     }
                     checked += 1;
@@ -71,7 +68,11 @@ pub fn doctor(ctx: &Ctx) -> Result<()> {
         for p in &problems {
             println!("\x1b[33m!\x1b[0m {p}");
         }
-        println!("{} problem{} found", problems.len(), if problems.len() == 1 { "" } else { "s" });
+        println!(
+            "{} problem{} found",
+            problems.len(),
+            if problems.len() == 1 { "" } else { "s" }
+        );
     }
     Ok(())
 }

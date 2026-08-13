@@ -86,7 +86,10 @@ pub async fn pour_set(
     depmap: &HashMap<String, String>,
     link_global: bool,
 ) -> Result<()> {
-    println!("{}", ui::dim(&format!("dram {}", env!("CARGO_PKG_VERSION"))));
+    println!(
+        "{}",
+        ui::dim(&format!("dram {}", env!("CARGO_PKG_VERSION")))
+    );
 
     let n = items.len();
     let width = items
@@ -148,7 +151,12 @@ pub async fn pour_set(
             // flushes later, when the formula is fully installed).
             let pb = mp_ref.insert_before(sticky_ref, ProgressBar::new(1));
             pb.set_style(ui::download_style());
-            pb.set_message(ui::item_label(&it.spec.name, &it.spec.version, width, it.via.is_some()));
+            pb.set_message(ui::item_label(
+                &it.spec.name,
+                &it.spec.version,
+                width,
+                it.via.is_some(),
+            ));
             let bytes = bottle::download(&client, &it.file, &pb).await?;
             pb.finish_and_clear();
             mp_ref.remove(&pb);
@@ -165,23 +173,22 @@ pub async fn pour_set(
     let depmap = Arc::new(depmap.clone());
     let mut join_set: JoinSet<Result<(usize, Vec<String>)>> = JoinSet::new();
 
-    let spawn_pour = |i: usize,
-                      bytes: Vec<u8>,
-                      join_set: &mut JoinSet<Result<(usize, Vec<String>)>>| {
-        let ctx = ctx.clone();
-        let spec = items[i].spec.clone();
-        let depmap = Arc::clone(&depmap);
-        let sem = Arc::clone(&sem);
-        let link_lock = Arc::clone(&link_lock);
-        join_set.spawn(async move {
-            let _permit = sem.acquire_owned().await.expect("semaphore closed");
-            let notes = tokio::task::spawn_blocking(move || {
-                pour(&ctx, &spec, &bytes, &depmap, link_global, &link_lock)
-            })
-            .await??;
-            Ok((i, notes))
-        });
-    };
+    let spawn_pour =
+        |i: usize, bytes: Vec<u8>, join_set: &mut JoinSet<Result<(usize, Vec<String>)>>| {
+            let ctx = ctx.clone();
+            let spec = items[i].spec.clone();
+            let depmap = Arc::clone(&depmap);
+            let sem = Arc::clone(&sem);
+            let link_lock = Arc::clone(&link_lock);
+            join_set.spawn(async move {
+                let _permit = sem.acquire_owned().await.expect("semaphore closed");
+                let notes = tokio::task::spawn_blocking(move || {
+                    pour(&ctx, &spec, &bytes, &depmap, link_global, &link_lock)
+                })
+                .await??;
+                Ok((i, notes))
+            });
+        };
 
     let mut blobs: Vec<Option<Vec<u8>>> = (0..n).map(|_| None).collect();
     let mut sizes = vec![0u64; n];
@@ -205,7 +212,11 @@ pub async fn pour_set(
                 .map(|&i| items[i].spec.name.as_str())
                 .collect();
             let extra = pouring.len().saturating_sub(3);
-            let more = if extra > 0 { format!(" +{extra}") } else { String::new() };
+            let more = if extra > 0 {
+                format!(" +{extra}")
+            } else {
+                String::new()
+            };
             parts.push(format!("pouring {}{more}", names.join(", ")));
         }
         let idle = downloads_done.saturating_sub(poured + pouring.len());
@@ -297,8 +308,10 @@ pub async fn install_all(ctx: &Ctx, plan: &[&Formula], roots: &[String]) -> Resu
 
     // depmap covers the whole plan (not just todo): already-installed deps
     // keep their current = index version for pinning.
-    let depmap: HashMap<String, String> =
-        plan.iter().map(|f| (f.name.clone(), f.keg_version())).collect();
+    let depmap: HashMap<String, String> = plan
+        .iter()
+        .map(|f| (f.name.clone(), f.keg_version()))
+        .collect();
 
     // Attribute each dep to the first requested root whose closure claims it.
     let by_name: HashMap<&str, &Formula> = todo.iter().map(|f| (f.name.as_str(), *f)).collect();
@@ -308,7 +321,10 @@ pub async fn install_all(ctx: &Ctx, plan: &[&Formula], roots: &[String]) -> Resu
         while let Some(name) = stack.pop() {
             if let Some(f) = by_name.get(name.as_str()) {
                 for dep in &f.dependencies {
-                    if !roots.contains(dep) && !via.contains_key(dep) && by_name.contains_key(dep.as_str()) {
+                    if !roots.contains(dep)
+                        && !via.contains_key(dep)
+                        && by_name.contains_key(dep.as_str())
+                    {
                         via.insert(dep.clone(), root.clone());
                         stack.push(dep.clone());
                     }
@@ -361,7 +377,11 @@ fn pour(
 
     let keg = ctx.cellar().join(&spec.name).join(&spec.version);
     if !keg.exists() {
-        bail!("{}: tarball did not produce expected keg {}", spec.name, keg.display());
+        bail!(
+            "{}: tarball did not produce expected keg {}",
+            spec.name,
+            keg.display()
+        );
     }
 
     let wire_up = || -> Result<()> {
@@ -393,13 +413,22 @@ fn pour(
 
     // Post-install runs once the keg is fully wired; problems become notes,
     // not failures.
-    Ok(crate::postinstall::run_steps(ctx, &spec.name, &spec.version, &spec.post_install))
+    Ok(crate::postinstall::run_steps(
+        ctx,
+        &spec.name,
+        &spec.version,
+        &spec.post_install,
+    ))
 }
 
 fn write_receipt(keg: &Path, requested: bool, deps: &[String]) -> Result<()> {
     // Preserve an existing protection mark across re-pours.
     let protected = read_receipt(keg).map(|r| r.protected).unwrap_or(false);
-    let receipt = Receipt { requested, protected, deps: deps.to_vec() };
+    let receipt = Receipt {
+        requested,
+        protected,
+        deps: deps.to_vec(),
+    };
     fs::write(keg.join(RECEIPT), serde_json::to_vec(&receipt)?)?;
     Ok(())
 }
@@ -423,7 +452,11 @@ pub fn outdated_list(ctx: &Ctx, index: &crate::api::Index) -> Result<Vec<Outdate
         if let Some(f) = index.get(&i.name) {
             let latest = f.keg_version();
             if !i.versions.contains(&latest) {
-                out.push(Outdated { name: i.name, installed: i.versions, latest });
+                out.push(Outdated {
+                    name: i.name,
+                    installed: i.versions,
+                    latest,
+                });
             }
         }
     }
@@ -446,7 +479,10 @@ pub async fn upgrade(ctx: &Ctx, index: &crate::api::Index, names: &[String]) -> 
         for n in names {
             match all_out.iter().find(|o| &o.name == n) {
                 Some(o) => v.push(o),
-                None => println!("{}", ui::dim(&format!("  · {n}: already up to date (or not installed)"))),
+                None => println!(
+                    "{}",
+                    ui::dim(&format!("  · {n}: already up to date (or not installed)"))
+                ),
             }
         }
         v
@@ -458,8 +494,10 @@ pub async fn upgrade(ctx: &Ctx, index: &crate::api::Index, names: &[String]) -> 
 
     let target_names: Vec<String> = targets.iter().map(|o| o.name.clone()).collect();
     let plan = crate::resolver::resolve(index, &target_names)?;
-    let depmap: HashMap<String, String> =
-        plan.iter().map(|f| (f.name.clone(), f.keg_version())).collect();
+    let depmap: HashMap<String, String> = plan
+        .iter()
+        .map(|f| (f.name.clone(), f.keg_version()))
+        .collect();
 
     let receipts: HashMap<String, Receipt> = scan_installed(ctx)?
         .into_iter()
@@ -492,7 +530,10 @@ pub async fn upgrade(ctx: &Ctx, index: &crate::api::Index, names: &[String]) -> 
     let mut summary = Vec::new();
     for t in &targets {
         if receipts.get(&t.name).map(|r| r.protected).unwrap_or(false) {
-            let deps = index.get(&t.name).map(|f| f.dependencies.clone()).unwrap_or_default();
+            let deps = index
+                .get(&t.name)
+                .map(|f| f.dependencies.clone())
+                .unwrap_or_default();
             protect_keg(ctx, &t.name, &t.latest, &deps)?;
         }
         for v in &t.installed {
@@ -502,13 +543,21 @@ pub async fn upgrade(ctx: &Ctx, index: &crate::api::Index, names: &[String]) -> 
             if pinned_names.contains(t.name.as_str()) {
                 println!(
                     "{}",
-                    ui::dim(&format!("  · kept {} {} (other kegs still pin it)", t.name, v))
+                    ui::dim(&format!(
+                        "  · kept {} {} (other kegs still pin it)",
+                        t.name, v
+                    ))
                 );
             } else {
                 let _ = fs::remove_dir_all(ctx.cellar().join(&t.name).join(v));
             }
         }
-        summary.push(format!("{} {} → {}", t.name, t.installed.join("/"), t.latest));
+        summary.push(format!(
+            "{} {} → {}",
+            t.name,
+            t.installed.join("/"),
+            t.latest
+        ));
     }
     println!(
         "{} upgraded {} formula{} in {:.1}s: {}",
@@ -598,7 +647,12 @@ fn scan_installed(ctx: &Ctx) -> Result<Vec<Installed>> {
             }
         }
         let version = versions.first().cloned().unwrap_or_default();
-        out.push(Installed { name, version, versions, receipt });
+        out.push(Installed {
+            name,
+            version,
+            versions,
+            receipt,
+        });
     }
     Ok(out)
 }
@@ -670,11 +724,16 @@ pub fn uninstall(
         }
         // Project-env-locked kegs are never candidates; say so once each.
         closure.retain(|name| {
-            let protected = by_name[name.as_str()].receipt.as_ref().is_some_and(|r| r.protected);
+            let protected = by_name[name.as_str()]
+                .receipt
+                .as_ref()
+                .is_some_and(|r| r.protected);
             if protected {
                 println!(
                     "{}",
-                    ui::dim(&format!("  · kept {name} (locked by a project environment)"))
+                    ui::dim(&format!(
+                        "  · kept {name} (locked by a project environment)"
+                    ))
                 );
             }
             !protected
@@ -729,7 +788,10 @@ pub fn uninstall(
                 if !needed_by.is_empty() {
                     println!(
                         "{}",
-                        ui::dim(&format!("  · kept {name} (needed by {})", needed_by.join(", ")))
+                        ui::dim(&format!(
+                            "  · kept {name} (needed by {})",
+                            needed_by.join(", ")
+                        ))
                     );
                 }
             }
@@ -744,7 +806,9 @@ pub fn uninstall(
     loop {
         let orphan = installed.iter().find(|i| {
             !removing.contains(&i.name)
-                && i.receipt.as_ref().is_some_and(|r| !r.requested && !r.protected)
+                && i.receipt
+                    .as_ref()
+                    .is_some_and(|r| !r.requested && !r.protected)
                 && !installed.iter().any(|o| {
                     o.name != i.name
                         && !removing.contains(&o.name)
@@ -790,20 +854,34 @@ pub fn uninstall(
     for (root, deps) in &groups {
         rows.push((root, ""));
         for (i, d) in deps.iter().enumerate() {
-            rows.push((d, if i + 1 == deps.len() { "└─" } else { "├─" }));
+            rows.push((
+                d,
+                if i + 1 == deps.len() {
+                    "└─"
+                } else {
+                    "├─"
+                },
+            ));
         }
     }
     let width = rows
         .iter()
         .map(|(i, branch)| {
-            let b = if branch.is_empty() { 0 } else { branch.chars().count() + 1 };
+            let b = if branch.is_empty() {
+                0
+            } else {
+                branch.chars().count() + 1
+            };
             b + i.name.chars().count() + 1 + i.version.chars().count()
         })
         .max()
         .unwrap_or(0);
 
     let start = Instant::now();
-    println!("{}", ui::dim(&format!("dram {}", env!("CARGO_PKG_VERSION"))));
+    println!(
+        "{}",
+        ui::dim(&format!("dram {}", env!("CARGO_PKG_VERSION")))
+    );
     for (i, branch) in &rows {
         remove_keg(ctx, &i.name)?;
         println!(
@@ -891,7 +969,11 @@ fn ensure_on_path(ctx: &Ctx) -> Result<()> {
     let existing = fs::read_to_string(&rc).unwrap_or_default();
     if existing.contains(&bin_str) {
         // Already configured; the current shell just hasn't picked it up.
-        println!("{} restart your shell to pick up {}", ui::CHECK, bin.display());
+        println!(
+            "{} restart your shell to pick up {}",
+            ui::CHECK,
+            bin.display()
+        );
         return Ok(());
     }
 
@@ -899,7 +981,9 @@ fn ensure_on_path(ctx: &Ctx) -> Result<()> {
     if !updated.is_empty() && !updated.ends_with('\n') {
         updated.push('\n');
     }
-    updated.push_str(&format!("\n# added by dram\nexport PATH=\"{bin_str}:$PATH\"\n"));
+    updated.push_str(&format!(
+        "\n# added by dram\nexport PATH=\"{bin_str}:$PATH\"\n"
+    ));
     fs::write(&rc, updated)?;
     println!(
         "{} added {} to PATH in {} — open a new shell or run: source {}",

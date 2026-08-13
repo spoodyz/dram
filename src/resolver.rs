@@ -58,7 +58,9 @@ mod tests {
             desc: None,
             aliases: vec![],
             oldnames: vec![],
-            versions: Versions { stable: Some("1.0".into()) },
+            versions: Versions {
+                stable: Some("1.0".into()),
+            },
             revision: 0,
             dependencies: deps.iter().map(|s| s.to_string()).collect(),
             keg_only: false,

@@ -30,9 +30,16 @@ impl StepCtx<'_> {
         let keg = self.keg().to_string_lossy().to_string();
         let bare_version = self.version.split('_').next().unwrap_or(self.version);
         let major = bare_version.split('.').next().unwrap_or(bare_version);
-        let major_minor = bare_version.splitn(3, '.').take(2).collect::<Vec<_>>().join(".");
+        let major_minor = bare_version
+            .splitn(3, '.')
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(".");
         s.replace("{{prefix}}", &keg)
-            .replace("{{opt_prefix}}", &self.ctx.opt().join(self.name).to_string_lossy())
+            .replace(
+                "{{opt_prefix}}",
+                &self.ctx.opt().join(self.name).to_string_lossy(),
+            )
             .replace("{{bin}}", &format!("{keg}/bin"))
             .replace("{{lib}}", &format!("{keg}/lib"))
             .replace("{{libexec}}", &format!("{keg}/libexec"))
@@ -52,7 +59,10 @@ impl StepCtx<'_> {
 
     /// Resolve a {base, path} location object.
     fn loc(&self, v: &Value) -> Option<PathBuf> {
-        let path = v.get("path").and_then(|p| p.as_str()).map(|p| self.template(p));
+        let path = v
+            .get("path")
+            .and_then(|p| p.as_str())
+            .map(|p| self.template(p));
         let base = v.get("base").and_then(|b| b.as_str());
         let keg = self.keg();
         let prefix = &self.ctx.prefix;
@@ -94,7 +104,11 @@ impl StepCtx<'_> {
                     let exists = brace_expand(&p.to_string_lossy())
                         .iter()
                         .any(|c| Path::new(c).exists());
-                    if cond == "if_exists" { exists } else { !exists }
+                    if cond == "if_exists" {
+                        exists
+                    } else {
+                        !exists
+                    }
                 }
                 _ => true,
             }
@@ -128,7 +142,9 @@ pub fn run_steps(ctx: &Ctx, name: &str, version: &str, steps: &[Value]) -> Vec<S
         }
         let ty = step.get("type").and_then(|t| t.as_str()).unwrap_or("?");
         if let Err(e) = run_step(&sc, ty, step, &mut notes) {
-            notes.push(format!("\x1b[33m!\x1b[0m {name}: post-install step '{ty}' failed: {e}"));
+            notes.push(format!(
+                "\x1b[33m!\x1b[0m {name}: post-install step '{ty}' failed: {e}"
+            ));
         }
     }
     notes
@@ -220,7 +236,12 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
                 if let Some(parent) = d.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                if step.get("overwrite").and_then(|o| o.as_bool()).unwrap_or(false) && d.exists() {
+                if step
+                    .get("overwrite")
+                    .and_then(|o| o.as_bool())
+                    .unwrap_or(false)
+                    && d.exists()
+                {
                     if d.is_dir() {
                         fs::remove_dir_all(&d)?;
                     } else {
@@ -231,19 +252,30 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
             }
         }
         "write" => {
-            let p = sc.loc(step.get("path").unwrap_or(&Value::Null)).context_none()?;
+            let p = sc
+                .loc(step.get("path").unwrap_or(&Value::Null))
+                .context_none()?;
             let content = sc.template(step.get("content").and_then(|c| c.as_str()).unwrap_or(""));
             if let Some(parent) = p.parent() {
                 fs::create_dir_all(parent)?;
             }
-            let overwrite = step.get("overwrite").and_then(|o| o.as_bool()).unwrap_or(false);
+            let overwrite = step
+                .get("overwrite")
+                .and_then(|o| o.as_bool())
+                .unwrap_or(false);
             if overwrite || !p.exists() {
                 fs::write(&p, content)?;
             }
         }
         "set_permissions" => {
-            let mode_str = step.get("permissions").and_then(|p| p.as_str()).unwrap_or("0755");
-            let recursive = !step.get("non_recursive").and_then(|n| n.as_bool()).unwrap_or(false);
+            let mode_str = step
+                .get("permissions")
+                .and_then(|p| p.as_str())
+                .unwrap_or("0755");
+            let recursive = !step
+                .get("non_recursive")
+                .and_then(|n| n.as_bool())
+                .unwrap_or(false);
             for p in paths(sc, step) {
                 apply_mode(&p, mode_str)?;
                 if recursive && p.is_dir() {
@@ -254,12 +286,20 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
             }
         }
         "inreplace" => {
-            let p = sc.loc(step.get("path").unwrap_or(&Value::Null)).context_none()?;
+            let p = sc
+                .loc(step.get("path").unwrap_or(&Value::Null))
+                .context_none()?;
             let before = sc.template(step.get("before").and_then(|b| b.as_str()).unwrap_or(""));
             let after = sc.template(step.get("after").and_then(|a| a.as_str()).unwrap_or(""));
             let content = fs::read_to_string(&p)?;
-            let replaced = if step.get("regexp").and_then(|r| r.as_bool()).unwrap_or(false) {
-                regex::Regex::new(&before)?.replace_all(&content, after.as_str()).into_owned()
+            let replaced = if step
+                .get("regexp")
+                .and_then(|r| r.as_bool())
+                .unwrap_or(false)
+            {
+                regex::Regex::new(&before)?
+                    .replace_all(&content, after.as_str())
+                    .into_owned()
             } else {
                 content.replace(&before, &after)
             };
@@ -275,7 +315,11 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
                 if dst.exists() {
                     return Ok(());
                 }
-                anyhow::bail!("{} missing and {} not present", src.display(), dst.display());
+                anyhow::bail!(
+                    "{} missing and {} not present",
+                    src.display(),
+                    dst.display()
+                );
             }
             let gz = fs::read(&src)?;
             let mut out = Vec::new();
@@ -290,7 +334,9 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
             }
         }
         "run" => {
-            let cmd = sc.loc(step.get("command").unwrap_or(&Value::Null)).context_none()?;
+            let cmd = sc
+                .loc(step.get("command").unwrap_or(&Value::Null))
+                .context_none()?;
             let args: Vec<String> = step
                 .get("args")
                 .and_then(|a| a.as_array())
@@ -321,7 +367,11 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
             let out = c.output()?;
             if !out.status.success() {
                 let err = String::from_utf8_lossy(&out.stderr);
-                anyhow::bail!("exit {}: {}", out.status, err.trim().chars().take(200).collect::<String>());
+                anyhow::bail!(
+                    "exit {}: {}",
+                    out.status,
+                    err.trim().chars().take(200).collect::<String>()
+                );
             }
         }
         "terminate_process" => {
@@ -329,7 +379,9 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
                 let _ = Command::new("pkill").arg("-f").arg(pname).output();
             }
         }
-        "compile_gsettings_schemas" => tool_step(sc, step, notes, &[("glib", "glib-compile-schemas")], &[]),
+        "compile_gsettings_schemas" => {
+            tool_step(sc, step, notes, &[("glib", "glib-compile-schemas")], &[])
+        }
         "gtk_update_icon_cache" => tool_step(
             sc,
             step,
@@ -348,13 +400,28 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
             &[("gdk-pixbuf", "gdk-pixbuf-query-loaders")],
             &["--update-cache"],
         ),
-        "update_mime_database" => tool_step(sc, step, notes, &[("shared-mime-info", "update-mime-database")], &[]),
-        "update_desktop_database" => {
-            tool_step(sc, step, notes, &[("desktop-file-utils", "update-desktop-database")], &["-q"])
-        }
+        "update_mime_database" => tool_step(
+            sc,
+            step,
+            notes,
+            &[("shared-mime-info", "update-mime-database")],
+            &[],
+        ),
+        "update_desktop_database" => tool_step(
+            sc,
+            step,
+            notes,
+            &[("desktop-file-utils", "update-desktop-database")],
+            &["-q"],
+        ),
         "init_data_dir" => {
-            let Some(dir) = step.get("path").and_then(|p| sc.loc(p)) else { return Ok(()) };
-            let empty = !dir.exists() || fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(true);
+            let Some(dir) = step.get("path").and_then(|p| sc.loc(p)) else {
+                return Ok(());
+            };
+            let empty = !dir.exists()
+                || fs::read_dir(&dir)
+                    .map(|mut d| d.next().is_none())
+                    .unwrap_or(true);
             fs::create_dir_all(&dir)?;
             if !empty {
                 return Ok(());
@@ -378,7 +445,14 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
                     notes.push(format!("· {name}: initializing data dir via {using}"));
                     let out = Command::new(&t).args(arg.split_whitespace()).output()?;
                     if !out.status.success() {
-                        anyhow::bail!("{using} failed: {}", String::from_utf8_lossy(&out.stderr).trim().chars().take(200).collect::<String>());
+                        anyhow::bail!(
+                            "{using} failed: {}",
+                            String::from_utf8_lossy(&out.stderr)
+                                .trim()
+                                .chars()
+                                .take(200)
+                                .collect::<String>()
+                        );
                     }
                 }
                 (u, None) => notes.push(format!(
@@ -386,8 +460,12 @@ fn run_step(sc: &StepCtx, ty: &str, step: &Value, notes: &mut Vec<String>) -> an
                 )),
             }
         }
-        "configure_gcc_runtime" | "configure_clang_system" | "configure_glibc_runtime"
-        | "configure_php" | "bootstrap_cpython" | "bootstrap_pypy" => {
+        "configure_gcc_runtime"
+        | "configure_clang_system"
+        | "configure_glibc_runtime"
+        | "configure_php"
+        | "bootstrap_cpython"
+        | "bootstrap_pypy" => {
             notes.push(format!(
                 "\x1b[33m!\x1b[0m {name}: post-install step '{ty}' not supported yet — some functionality may be missing"
             ));
@@ -417,7 +495,9 @@ fn tool_step(
             return;
         }
     }
-    let Some(tool) = find_tool(sc.ctx, candidates) else { return };
+    let Some(tool) = find_tool(sc.ctx, candidates) else {
+        return;
+    };
     let mut c = Command::new(&tool);
     c.args(pre_args);
     if let Some(d) = &dir {
@@ -428,7 +508,11 @@ fn tool_step(
             "\x1b[33m!\x1b[0m {}: {} failed: {}",
             sc.name,
             tool.file_name().unwrap_or_default().to_string_lossy(),
-            String::from_utf8_lossy(&out.stderr).trim().chars().take(120).collect::<String>()
+            String::from_utf8_lossy(&out.stderr)
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>()
         )),
         Err(e) => notes.push(format!("\x1b[33m!\x1b[0m {}: {e}", sc.name)),
         _ => {}
@@ -452,7 +536,11 @@ fn find_tool(ctx: &Ctx, candidates: &[(&str, &str)]) -> Option<PathBuf> {
 /// `{brace}` + `*` expansion of a source path when the step sets
 /// source_glob; otherwise the literal path.
 fn expand_sources(src: &Path, step: &Value) -> Vec<PathBuf> {
-    if !step.get("source_glob").and_then(|g| g.as_bool()).unwrap_or(false) {
+    if !step
+        .get("source_glob")
+        .and_then(|g| g.as_bool())
+        .unwrap_or(false)
+    {
         return vec![src.to_path_buf()];
     }
     let mut out = Vec::new();
@@ -478,7 +566,10 @@ fn paths(sc: &StepCtx, step: &Value) -> Vec<PathBuf> {
     let raw: Vec<PathBuf> = if let Some(list) = step.get("paths").and_then(|p| p.as_array()) {
         list.iter().filter_map(|p| sc.loc(p)).collect()
     } else {
-        step.get("path").and_then(|p| sc.loc(p)).into_iter().collect()
+        step.get("path")
+            .and_then(|p| sc.loc(p))
+            .into_iter()
+            .collect()
     };
     // Paths may carry glob patterns (python: venv/scripts/**/*).
     raw.into_iter()
@@ -487,7 +578,13 @@ fn paths(sc: &StepCtx, step: &Value) -> Vec<PathBuf> {
             if s.contains('*') {
                 brace_expand(&s)
                     .iter()
-                    .flat_map(|pat| glob::glob(pat).ok().into_iter().flatten().filter_map(|m| m.ok()))
+                    .flat_map(|pat| {
+                        glob::glob(pat)
+                            .ok()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|m| m.ok())
+                    })
                     .collect()
             } else {
                 vec![p]
@@ -526,15 +623,23 @@ fn apply_mode(p: &Path, spec: &str) -> anyhow::Result<()> {
                 };
             }
         }
-        if subtract { current & !bits } else { current | bits }
+        if subtract {
+            current & !bits
+        } else {
+            current | bits
+        }
     };
     set_mode(p, mode)?;
     Ok(())
 }
 
 fn source_target(sc: &StepCtx, step: &Value) -> anyhow::Result<(PathBuf, PathBuf)> {
-    let src = sc.loc(step.get("source").unwrap_or(&Value::Null)).context_none()?;
-    let dst = sc.loc(step.get("target").unwrap_or(&Value::Null)).context_none()?;
+    let src = sc
+        .loc(step.get("source").unwrap_or(&Value::Null))
+        .context_none()?;
+    let dst = sc
+        .loc(step.get("target").unwrap_or(&Value::Null))
+        .context_none()?;
     Ok((src, dst))
 }
 
@@ -590,13 +695,25 @@ mod tests {
         let p = std::env::temp_dir().join("dram-test-mode");
         fs::write(&p, "x").unwrap();
         apply_mode(&p, "0644").unwrap();
-        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o644);
+        assert_eq!(
+            fs::metadata(&p).unwrap().permissions().mode() & 0o7777,
+            0o644
+        );
         apply_mode(&p, "u+x").unwrap();
-        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o744);
+        assert_eq!(
+            fs::metadata(&p).unwrap().permissions().mode() & 0o7777,
+            0o744
+        );
         apply_mode(&p, "a+x").unwrap();
-        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o755);
+        assert_eq!(
+            fs::metadata(&p).unwrap().permissions().mode() & 0o7777,
+            0o755
+        );
         apply_mode(&p, "go-rx").unwrap();
-        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o700);
+        assert_eq!(
+            fs::metadata(&p).unwrap().permissions().mode() & 0o7777,
+            0o700
+        );
         assert!(apply_mode(&p, "banana").is_err());
         let _ = fs::remove_file(&p);
     }

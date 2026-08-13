@@ -88,7 +88,12 @@ pub fn init(names: &[String]) -> Result<()> {
             manifest.packages.join(", ")
         }
     );
-    println!("{}", ui::dim(&format!("  · tip: add {ENV_DIR}/ to .gitignore; commit {MANIFEST} and {LOCKFILE}")));
+    println!(
+        "{}",
+        ui::dim(&format!(
+            "  · tip: add {ENV_DIR}/ to .gitignore; commit {MANIFEST} and {LOCKFILE}"
+        ))
+    );
     Ok(())
 }
 
@@ -121,7 +126,13 @@ pub async fn lock(ctx: &Ctx) -> Result<()> {
             .files
             .iter()
             .map(|(tag, b)| {
-                (tag.clone(), LockedBottle { url: b.url.clone(), sha256: b.sha256.clone() })
+                (
+                    tag.clone(),
+                    LockedBottle {
+                        url: b.url.clone(),
+                        sha256: b.sha256.clone(),
+                    },
+                )
             })
             .collect();
         packages.push(LockedPackage {
@@ -139,13 +150,20 @@ pub async fn lock(ctx: &Ctx) -> Result<()> {
         });
     }
 
-    let lockfile = Lockfile { version: 1, packages };
+    let lockfile = Lockfile {
+        version: 1,
+        packages,
+    };
     fs::write(LOCKFILE, toml::to_string_pretty(&lockfile)?)?;
     println!(
         "{} locked {} formula{} -> {LOCKFILE}",
         ui::CHECK,
         lockfile.packages.len(),
-        if lockfile.packages.len() == 1 { "" } else { "e" },
+        if lockfile.packages.len() == 1 {
+            ""
+        } else {
+            "e"
+        },
     );
     Ok(())
 }

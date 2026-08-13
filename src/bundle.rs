@@ -35,7 +35,11 @@ pub async fn install(ctx: &Ctx, path: &Path) -> Result<()> {
     let names = parse(path)?;
     println!(
         "{}",
-        ui::dim(&format!("bundle: {} ({} formulae)", path.display(), names.len()))
+        ui::dim(&format!(
+            "bundle: {} ({} formulae)",
+            path.display(),
+            names.len()
+        ))
     );
     let index = api::fetch_index(ctx, false).await?;
     let plan = resolver::resolve(&index, &names)?;
@@ -54,7 +58,10 @@ mod tests {
     fn parses_names_comments_and_blanks() {
         let p = std::env::temp_dir().join("dram-test-Dramfile");
         fs::write(&p, "# header comment\n\njq  # inline comment\nwget\n   \n").unwrap();
-        assert_eq!(parse(&p).unwrap(), vec!["jq".to_string(), "wget".to_string()]);
+        assert_eq!(
+            parse(&p).unwrap(),
+            vec!["jq".to_string(), "wget".to_string()]
+        );
         let _ = fs::remove_file(&p);
     }
 

@@ -15,7 +15,11 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "dram", version, about = "A wee pour of Homebrew — fast bottle installs, no Ruby")]
+#[command(
+    name = "dram",
+    version,
+    about = "A wee pour of Homebrew — fast bottle installs, no Ruby"
+)]
 struct Cli {
     /// Install prefix (default: ~/.dram)
     #[arg(long, global = true)]
@@ -129,12 +133,25 @@ async fn main() -> Result<()> {
         }
         Command::Info { name } => {
             let index = api::fetch_index(&ctx, false).await?;
-            let f = index.get(&name).with_context(|| format!("no such formula: {name}"))?;
-            println!("{}: {}", f.name, f.versions.stable.as_deref().unwrap_or("?"));
+            let f = index
+                .get(&name)
+                .with_context(|| format!("no such formula: {name}"))?;
+            println!(
+                "{}: {}",
+                f.name,
+                f.versions.stable.as_deref().unwrap_or("?")
+            );
             if let Some(d) = &f.desc {
                 println!("  {d}");
             }
-            println!("  deps: {}", if f.dependencies.is_empty() { "none".into() } else { f.dependencies.join(", ") });
+            println!(
+                "  deps: {}",
+                if f.dependencies.is_empty() {
+                    "none".into()
+                } else {
+                    f.dependencies.join(", ")
+                }
+            );
             println!("  keg-only: {}", f.keg_only);
             match bottle::pick(f) {
                 Ok(b) => println!("  bottle: {} (cellar: {})", b.tag, b.file.cellar),
@@ -177,7 +194,12 @@ async fn main() -> Result<()> {
                 println!("{name} {}", versions.join(" "));
             }
         }
-        Command::Uninstall { names, force, remove_deps, force_remove_deps } => {
+        Command::Uninstall {
+            names,
+            force,
+            remove_deps,
+            force_remove_deps,
+        } => {
             if names.is_empty() {
                 bail!("nothing to uninstall");
             }
@@ -216,7 +238,11 @@ async fn main() -> Result<()> {
                     || f.aliases.iter().any(|a| a.to_lowercase().contains(&t))
                 {
                     by_name.push(f);
-                } else if f.desc.as_deref().is_some_and(|d| d.to_lowercase().contains(&t)) {
+                } else if f
+                    .desc
+                    .as_deref()
+                    .is_some_and(|d| d.to_lowercase().contains(&t))
+                {
                     by_desc.push(f);
                 }
             }
@@ -225,7 +251,11 @@ async fn main() -> Result<()> {
                 let installed = ctx.cellar().join(&f.name).exists();
                 println!(
                     "{}{} {} {}",
-                    if installed { format!("{} ", ui::CHECK) } else { "  ".into() },
+                    if installed {
+                        format!("{} ", ui::CHECK)
+                    } else {
+                        "  ".into()
+                    },
                     f.name,
                     ui::dim(f.versions.stable.as_deref().unwrap_or("?")),
                     ui::dim(f.desc.as_deref().unwrap_or("")),
@@ -244,7 +274,12 @@ async fn main() -> Result<()> {
                 println!("{} everything up to date", ui::CHECK);
             } else {
                 for o in out {
-                    println!("{} {} → {}", o.name, ui::dim(&o.installed.join("/")), o.latest);
+                    println!(
+                        "{} {} → {}",
+                        o.name,
+                        ui::dim(&o.installed.join("/")),
+                        o.latest
+                    );
                 }
             }
         }

@@ -38,7 +38,7 @@ pub struct Picked<'a> {
 
 /// Pick the best platform tag from any tag-keyed map (a formula's bottle
 /// files, or a lockfile's recorded bottles).
-pub fn pick_tag<'a, T>(files: &'a std::collections::HashMap<String, T>) -> Option<(&'static str, &'a T)> {
+pub fn pick_tag<T>(files: &std::collections::HashMap<String, T>) -> Option<(&'static str, &T)> {
     TAG_PREFERENCE
         .iter()
         .find_map(|tag| files.get(*tag).map(|f| (*tag, f)))
